@@ -1,0 +1,49 @@
+{
+  "status": "passed",
+  "comparison": "counts and non-cryptographic table fingerprints",
+  "first": {
+    "source_count": 1000,
+    "quarantine_count": 105,
+    "bronze_batch_count": 895,
+    "silver_batch_count": 895,
+    "gold_batch_count": 895,
+    "bronze_total_count": 895,
+    "silver_total_count": 895,
+    "gold_total_count": 895,
+    "bronze_fingerprint": {
+      "xor": "7789636355235381200",
+      "sum": "166586974209567611536"
+    },
+    "silver_fingerprint": {
+      "xor": "-6498399985870292892",
+      "sum": "-20379380099081426778"
+    },
+    "gold_fingerprint": {
+      "xor": "6300029178008521944",
+      "sum": "-122594998755250067302"
+    }
+  },
+  "rerun": {
+    "source_count": 1000,
+    "quarantine_count": 105,
+    "bronze_batch_count": 895,
+    "silver_batch_count": 895,
+    "gold_batch_count": 895,
+    "bronze_total_count": 895,
+    "silver_total_count": 895,
+    "gold_total_count": 895,
+    "bronze_fingerprint": {
+      "xor": "7789636355235381200",
+      "sum": "166586974209567611536"
+    },
+    "silver_fingerprint": {
+      "xor": "-6498399985870292892",
+      "sum": "-20379380099081426778"
+    },
+    "gold_fingerprint": {
+      "xor": "6300029178008521944",
+      "sum": "-122594998755250067302"
+    }
+  },
+  "note": "Fingerprint equality is useful evidence, not a proof against all collisions."
+}

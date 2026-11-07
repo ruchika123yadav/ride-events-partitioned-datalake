@@ -1,0 +1,40 @@
+{
+  "scenario": "A controlled Mumbai region change in an isolated city table.",
+  "effective_at_utc": "2025-01-01T00:00:00Z",
+  "before": [
+    {
+      "city_name": "Mumbai",
+      "region": "West",
+      "is_current": true,
+      "valid_from_utc": "2023-01-01T00:00:00Z",
+      "valid_to_utc": null
+    }
+  ],
+  "after": [
+    {
+      "city_name": "Mumbai",
+      "region": "West",
+      "is_current": false,
+      "valid_from_utc": "2023-01-01T00:00:00Z",
+      "valid_to_utc": "2025-01-01T00:00:00Z"
+    },
+    {
+      "city_name": "Mumbai",
+      "region": "New West",
+      "is_current": true,
+      "valid_from_utc": "2025-01-01T00:00:00Z",
+      "valid_to_utc": null
+    }
+  ],
+  "ride_version_mapping": [
+    {
+      "ride_id": "DEMO_NEW",
+      "region": "New West"
+    },
+    {
+      "ride_id": "DEMO_OLD",
+      "region": "West"
+    }
+  ],
+  "note": "Synthetic example; region names are illustrative."
+}

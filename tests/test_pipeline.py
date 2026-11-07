@@ -1,6 +1,7 @@
-"""Local Spark/Delta checks; run with pytest on the personal machine."""
+"""Spark and Delta pipeline checks."""
 
 import sys
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -10,9 +11,11 @@ from pyspark.sql import SparkSession, functions as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from ingest import RAW_SCHEMA, SOURCE_FIELDS, ingest_csv
+from generate_data import generate_rows
 from partition_writer import merge_city_history, merge_rides
 from optimize import run_demo as run_compaction_demo
 from prune_demo import run_demo as run_pruning_demo
+import run_pipeline
 from transform import empty_city_history, prepare_bronze, prepare_gold_fact, prepare_silver, update_city_history
 from validate import validate_records
 
@@ -102,6 +105,27 @@ def test_late_event_uses_event_date(spark):
     assert bad.count() == 0
 
 
+def test_late_batch_updates_existing_historical_partition(spark, tmp_path):
+    target = tmp_path / "bronze"
+    first, rejected = split(raw_df(spark, [
+        row("historical", event_time="2024-02-29T09:00:00Z"),
+        row("newer", event_time="2024-03-04T10:00:00Z"),
+    ]))
+    assert rejected.count() == 0
+    merge_rides(prepare_bronze(first), target)
+    before = spark.read.format("delta").load(str(target))
+    historical = (F.col("year") == 2024) & (F.col("month") == 2) & (F.col("day") == 29)
+    assert before.filter(historical).count() == 1
+
+    later, rejected_later = split(raw_df(spark, [row("late", event_time="2024-02-29T10:00:00Z")]))
+    assert rejected_later.count() == 0
+    merge_rides(prepare_bronze(later), target)
+    after = spark.read.format("delta").load(str(target))
+    assert after.count() == 3
+    assert after.filter(historical).count() == 2
+    assert after.filter((F.col("ride_id") == "late") & historical).count() == 1
+
+
 def test_invalid_city(spark):
     good, bad = split(raw_df(spark, [row(city="Atlantis")]))
     assert good.count() == 0 and reasons(bad) == ["invalid_city"]
@@ -151,6 +175,39 @@ def test_partial_failure_retry(spark, tmp_path):
     merge_rides(bronze, path)  # Simulate failure after Bronze has committed.
     merge_rides(bronze, path)  # A retry must preserve both rows without duplicates.
     assert spark.read.format("delta").load(str(path)).count() == 2
+
+
+def test_pipeline_recovers_after_injected_silver_failure(spark, tmp_path, monkeypatch):
+    source = tmp_path / "rides.csv"
+    source.write_text(",".join(SOURCE_FIELDS) + "\nr1,u1,d1,Mumbai,100,2024-04-04T10:00:00Z,completed\n", encoding="utf-8")
+    bronze, silver = tmp_path / "bronze", tmp_path / "silver"
+    config = {
+        "paths": {"source": str(source), "bronze": str(bronze), "silver": str(silver),
+                  "quarantine": str(tmp_path / "quarantine"), "gold_cities": str(tmp_path / "cities"),
+                  "gold_facts": str(tmp_path / "facts")},
+        "validation": {"allowed_cities": CITIES, "allowed_statuses": STATUSES,
+                       "as_of_utc": "2026-01-01T00:00:00Z"},
+        "city_dimension": {"initial_valid_from": "2023-01-01T00:00:00Z",
+                           "changes_effective_at": "2025-01-01T00:00:00Z",
+                           "regions": {"Mumbai": "West"}},
+    }
+    original_merge = run_pipeline.merge_rides
+
+    def fail_before_silver(df, destination, *args, **kwargs):
+        if Path(destination) == silver:
+            raise RuntimeError("injected failure before Silver commit")
+        return original_merge(df, destination, *args, **kwargs)
+
+    monkeypatch.setattr(run_pipeline, "merge_rides", fail_before_silver)
+    with pytest.raises(RuntimeError, match="injected failure"):
+        run_pipeline.execute_pipeline(spark, config, "failed_attempt", {})
+    assert spark.read.format("delta").load(str(bronze)).count() == 1
+    assert not silver.exists()
+
+    monkeypatch.setattr(run_pipeline, "merge_rides", original_merge)
+    report = run_pipeline.execute_pipeline(spark, config, "retry_attempt", {})
+    assert report["bronze_batch_count"] == report["silver_batch_count"] == report["gold_batch_count"] == 1
+    assert spark.read.format("delta").load(str(bronze)).count() == 1
 
 
 def test_conflicting_replay_is_not_silently_overwritten(spark, tmp_path):
@@ -209,3 +266,16 @@ def test_compaction_demo_preserves_rows(spark, tmp_path):
     assert report["before"]["files"] > 0
     assert report["after"]["files"] <= report["before"]["files"]
     assert spark.read.format("delta").load(report["demo_path"]).count() == 1000
+
+
+def test_generator_separate_injection_labels_are_reproducible():
+    args = (1000, 42, 2024, CITIES, STATUSES)
+    rows, expected, labels = generate_rows(*args, include_record_labels=True)
+    rows_again, expected_again, labels_again = generate_rows(*args, include_record_labels=True)
+    assert (rows, expected, labels) == (rows_again, expected_again, labels_again)
+    assert len(labels) == len(rows) == 1000
+    assert labels[0]["csv_line_number"] == 2
+    assert all(set(record) == set(SOURCE_FIELDS) for record in rows)
+    injected = Counter(label["injected_defect"] for label in labels)
+    assert {key: injected[key] for key in expected["injected_defects"]} == expected["injected_defects"]
+    assert sum(label["simulated_late_arrival"] for label in labels) == expected["late_arriving_count"]

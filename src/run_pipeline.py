@@ -185,9 +185,16 @@ def execute_pipeline(spark, config, run_id, log):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=str(ROOT / "config.yaml"))
+    parser.add_argument("--label", choices=("first", "rerun"),
+                        help="Optional readable report name for an isolated run")
     args = parser.parse_args()
     config = load_config(args.config)
     run_id = "RUN_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + "_" + uuid4().hex[:8]
+    filename = f"pipeline_{args.label}.json" if args.label else run_id + ".json"
+    report_path = project_path(config["paths"]["reconciliation"]) / filename
+    log_path = project_path(config["paths"]["run_logs"]) / filename
+    if args.label and (report_path.exists() or log_path.exists()):
+        raise FileExistsError(f"Report label already exists: {args.label}; use an isolated run directory")
     log = {"run_id": run_id, "start_time": utc_now(), "end_time": None, "input_count": None,
            "valid_count": None, "rejected_count": None, "bronze_count": None, "silver_count": None,
            "gold_fact_count": None, "status": "running", "failure_reason": None}
@@ -196,7 +203,6 @@ def main():
         spark = make_spark(config)
         report = execute_pipeline(spark, config, run_id, log)
         report["run_id"] = run_id
-        report_path = project_path(config["paths"]["reconciliation"]) / (run_id + ".json")
         write_json(report_path, report)
         log["status"] = "success"
         print(json.dumps(report, indent=2))
@@ -207,7 +213,7 @@ def main():
     finally:
         log["end_time"] = utc_now()
         try:
-            write_json(project_path(config["paths"]["run_logs"]) / (run_id + ".json"), log)
+            write_json(log_path, log)
         finally:
             if spark is not None:
                 spark.stop()

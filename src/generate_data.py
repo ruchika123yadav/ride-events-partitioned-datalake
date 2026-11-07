@@ -23,7 +23,7 @@ def project_path(value):
     return path if path.is_absolute() else PROJECT_ROOT / path
 
 
-def generate_rows(size, seed, year, cities, statuses):
+def generate_rows(size, seed, year, cities, statuses, include_record_labels=False):
     """Return rows and generator-known labels; no labels go into the CSV.
 
     Defect categories are disjoint, so their counts are easy to reconcile.
@@ -102,7 +102,23 @@ def generate_rows(size, seed, year, cities, statuses):
         "late_arriving_count": len(late),
         "notes": "Counts describe generator-injected defects, not pipeline verification. CSV row order simulates arrival order.",
     }
-    return normal + late, labels
+    ordered_rows = normal + late
+    if not include_record_labels:
+        return ordered_rows, labels
+
+    # These are injection labels, not expected validation decisions: one of a
+    # duplicate pair can be accepted regardless of which row was modified.
+    defects_by_identity = {
+        id(rows[i]): defect for defect, group in groups.items() for i in group
+    }
+    late_identities = {id(rows[i]) for i in late_indexes}
+    record_labels = [
+        {"csv_line_number": line_number, "ride_id": record["ride_id"],
+         "injected_defect": defects_by_identity.get(id(record), "none"),
+         "simulated_late_arrival": id(record) in late_identities}
+        for line_number, record in enumerate(ordered_rows, start=2)
+    ]
+    return ordered_rows, labels, record_labels
 
 
 def main():
@@ -111,6 +127,7 @@ def main():
     parser.add_argument("--size", type=int, help="Number of rows (default: config.yaml)")
     parser.add_argument("--output", help="CSV output path; relative to project root")
     parser.add_argument("--expected-output", help="Expected-count JSON path; relative to project root")
+    parser.add_argument("--labels-output", help="Separate CSV injection labels path; relative to project root")
     parser.add_argument("--force", action="store_true", help="Replace existing output files")
     args = parser.parse_args()
 
@@ -120,18 +137,21 @@ def main():
     size = settings["size"] if args.size is None else args.size
     output = project_path(args.output or config["paths"]["source"])
     expected = project_path(args.expected_output or str(Path(config["paths"]["expected"]) / "rides_expected.json"))
-    if output.resolve() == expected.resolve():
-        parser.error("CSV and expected-count paths must be different")
-    if not args.force and (output.exists() or expected.exists()):
+    labels_output = project_path(args.labels_output or str(expected.with_name(expected.stem + "_record_labels.csv")))
+    if len({output.resolve(), expected.resolve(), labels_output.resolve()}) != 3:
+        parser.error("Input CSV, expected counts, and labels must use different paths")
+    if not args.force and any(path.exists() for path in (output, expected, labels_output)):
         parser.error("Output already exists; choose new paths or pass --force")
     try:
-        rows, labels = generate_rows(size, settings["seed"], settings["year"],
-                                     config["validation"]["allowed_cities"],
-                                     config["validation"]["allowed_statuses"])
+        rows, labels, record_labels = generate_rows(size, settings["seed"], settings["year"],
+                                                    config["validation"]["allowed_cities"],
+                                                    config["validation"]["allowed_statuses"],
+                                                    include_record_labels=True)
     except ValueError as exc:
         parser.error(str(exc))
     output.parent.mkdir(parents=True, exist_ok=True)
     expected.parent.mkdir(parents=True, exist_ok=True)
+    labels_output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=FIELDS)
         writer.writeheader()
@@ -139,8 +159,13 @@ def main():
     with expected.open("w", encoding="utf-8") as handle:
         json.dump(labels, handle, indent=2)
         handle.write("\n")
+    with labels_output.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=("csv_line_number", "ride_id", "injected_defect", "simulated_late_arrival"))
+        writer.writeheader()
+        writer.writerows(record_labels)
     print(f"Generated {size:,} rows: {output}")
     print(f"Expected generator counts: {expected}")
+    print(f"Separate injection labels: {labels_output}")
     print(f"Valid: {labels['expected_valid_count']:,}; rejected: {labels['expected_rejected_count']:,}; late: {labels['late_arriving_count']:,}")
 
 

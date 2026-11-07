@@ -98,12 +98,18 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--day", default="auto", help="UTC partition date YYYY-MM-DD, or auto")
     parser.add_argument("--config", default=str(Path(__file__).resolve().parents[1] / "config.yaml"))
+    parser.add_argument("--report-name", help="Optional JSON filename in the reconciliation directory")
     args = parser.parse_args()
     config = load_config(args.config)
+    name = args.report_name or ("pruning_" + uuid4().hex + ".json")
+    if Path(name).name != name or not name.endswith(".json"):
+        parser.error("report-name must be a JSON filename without directories")
+    output = project_path(config["paths"]["reconciliation"]) / name
+    if output.exists():
+        raise FileExistsError(f"Report already exists: {output}")
     spark = make_spark(config)
     try:
         result = run_demo(spark, config, args.day)
-        output = project_path(config["paths"]["reconciliation"]) / ("pruning_" + uuid4().hex + ".json")
         write_json(output, result)
         print(json.dumps(result, indent=2))
         print(f"Report: {output}")

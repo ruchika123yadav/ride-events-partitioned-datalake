@@ -1,0 +1,16 @@
+{
+  "run_id": "RUN_20261107T184243452935Z_59c3f098",
+  "start_time": "2026-11-07T18:42:43.453099+00:00",
+  "end_time": "2026-11-07T18:44:31.539850+00:00",
+  "input_count": 1000,
+  "valid_count": 895,
+  "rejected_count": 105,
+  "bronze_count": 895,
+  "silver_count": 895,
+  "gold_fact_count": 895,
+  "status": "success",
+  "failure_reason": null,
+  "validation_as_of_utc": "2026-11-07T18:42:42.492896+00:00",
+  "source_file": "rides.csv",
+  "batch_fingerprint": "d324e5c857348ca027339912100eb3edac9a998b70f8f9c7351ce8160e7f5de0"
+}

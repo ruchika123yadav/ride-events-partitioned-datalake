@@ -1,0 +1,14 @@
+{
+  "scenario": "A second batch adds an earlier event to an existing historical partition.",
+  "existing_historical_event_time": "2024-02-29T09:00:00Z",
+  "first_batch_event_time": "2024-03-04T10:00:00Z",
+  "late_batch_event_time": "2024-02-29T10:00:00Z",
+  "rows_before_second_batch": 2,
+  "rows_after_second_batch": 3,
+  "historical_partition_rows_before": 1,
+  "historical_partition_rows_after": 2,
+  "late_ride_id": "DEMO_LATE",
+  "observed_partition": "year=2024/month=2/day=29",
+  "partition_verified_from": "Delta data-file path and stored partition columns",
+  "note": "Two separate writes to an isolated demo table; no pipeline tables are modified."
+}

@@ -10,6 +10,7 @@ paths:
   run_logs: output/run_logs
   reconciliation: output/reconciliation
   compaction_benchmarks: data/benchmarks/compaction
+  reviewer_demo: data/benchmarks/reviewer_demo
 spark:
   master: "local[*]"
   app_name: partitioned_ride_lake
