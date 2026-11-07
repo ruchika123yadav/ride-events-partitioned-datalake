@@ -1,72 +1,75 @@
 # Time-Partitioned Ride Data Lake
 
-A local PySpark and Delta Lake pipeline for validated, date-partitioned ride analytics.
+**A local PySpark and Delta Lake pipeline that turns raw ride events into reliable, time-partitioned analytics.**
 
-![Python](https://img.shields.io/badge/Python-3.10--3.12-blue) ![PySpark](https://img.shields.io/badge/PySpark-3.5.9-orange) ![Delta Lake](https://img.shields.io/badge/Delta%20Lake-3.3.3-blue) ![pytest](https://img.shields.io/badge/tests-pytest-green)
+![Python](https://img.shields.io/badge/Python-3.10--3.12-blue) ![PySpark](https://img.shields.io/badge/PySpark-3.5.9-orange) ![Delta Lake](https://img.shields.io/badge/Delta%20Lake-3.3.3-blue) ![Testing](https://img.shields.io/badge/tests-pytest-green)
+
+[Architecture](#architecture) · [Features](#key-features) · [Quick start](#quick-start) · [Data model](#data-model) · [Results](#results) · [Limitations](#known-limitations-and-next-steps)
 
 ## Problem statement
 
-Analytical workloads need efficient access to time-bounded ride events.
-Unstructured storage can force unnecessary scans and produce excessive small files.
-This project partitions events by UTC date, validates incoming records, and
-demonstrates pruning, compaction, reconciliation, and safe replay.
+Ride analytics must answer date-based questions without scanning irrelevant data or accepting unreliable records. This project demonstrates a date-partitioned pipeline with validation, historical context, safe replay, reconciliation, and measurable pruning and compaction experiments.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A[Synthetic CSV] --> B[Ingest]
-    B --> C[Validate]
-    C -->|invalid| Q[Quarantine]
-    C -->|valid| D[Bronze: daily Delta]
-    D --> E[Silver: typed rides]
-    E --> F[Gold: ride_fact]
-    E --> G[Gold: city_dim SCD2]
-    G --> F
-    D --> P[Pruning demo]
-    D -.-> O[Isolated compaction demo]
-    F --> R[Run logs and reconciliation]
-    Q --> R
-    P --> R
-    O --> R
+    A[Synthetic ride CSV] --> B[Ingest and tag source]; B --> C{Validate}
+    C -->|invalid| Q[Quarantine with reason]; C -->|valid| D[Bronze: daily Delta]
+    D --> E[Silver: typed rides]; E --> F[Gold: ride_fact]
+    E --> G[Gold: city_dim SCD2]; G -->|as-of city key| F
+    D --> P[Partition pruning demo]; D -.-> O[Isolated compaction demo]
+    F --> R[Run logs and reconciliation]; Q --> R; P --> R; O --> R
 ```
 
 ![Ride data lake architecture](docs/images/pipeline-architecture.png)
 
+<details>
+<summary><strong>Explore: late-arriving events</strong></summary>
+
+The isolated demonstration sends an older event in a second batch and assigns it to its **event-date** partition, not the processing date. In the recorded run, the existing `2024/2/29` partition grew from one row to two without losing the newer event.
+
+</details>
+
+<details>
+<summary><strong>Explore: city history with SCD Type 2</strong></summary>
+
+A controlled city-region change closes the old version and inserts a new current version. Rides join to the version valid at their event time. The example region names are synthetic.
+
+</details>
+
 ## Key features
 
-| Feature | How it is implemented |
+| Feature | Implementation |
 | --- | --- |
-| Daily event-time partitioning | Bronze and Silver use UTC `year/month/day` from `event_time`. |
-| Partition pruning | The demo compares a full scan with a day-filtered scan and records its plan and metrics. |
-| Small-file compaction | An isolated Delta OPTIMIZE demo measures active files before and after compaction. |
-| Validation and quarantine | Schema and business checks separate invalid rows with reasons and source metadata. |
-| Idempotent MERGE | Delta merges by `ride_id`; exact replays are ignored and conflicting payloads fail. |
-| Late-arriving data | New ride IDs are routed to the partition for their event date. |
-| SCD Type 2 | City region changes create effective-dated versions with stable keys. |
-| Run logging | JSON logs capture run status, timing, counts, and failure reasons. |
-| Reconciliation | Batch counts and fare totals are compared across pipeline layers. |
+| Daily event-time partitions | Bronze and Silver derive UTC `year/month/day` from the event timestamp. |
+| Partition pruning | Full and day-filtered scans record observed files, sizes, timing and Spark plan metrics. |
+| Small-file compaction | An isolated Delta `OPTIMIZE` experiment records active files before and after. |
+| Validation and quarantine | Invalid records retain a reason and source/run metadata. |
+| Idempotent MERGE | Exact ride replays do not add duplicates; conflicting payloads fail. |
+| Late arrivals | A later batch is checked against its historical event-date partition. |
+| SCD Type 2 | City-region versions retain effective intervals and historical ride mappings. |
+| Run logging | Structured logs capture timestamps, counts, status and failures. |
+| Reconciliation | Source, accepted and target counts plus fare totals are compared. |
 
 ## Quick start
 
 ### Open in GitHub Codespaces
 
-1. Create a repository with this project's files at its root.
-2. Select **Code → Codespaces → Create codespace on main** and wait for setup.
-3. Open the terminal and run:
+1. Open the repository on GitHub and select **Code → Codespaces → Create codespace on main**.
+2. Wait for the Python 3.11, Java 17 and dependency setup to finish.
+3. In the Codespace terminal, run:
 
    ```bash
    bash run_all.sh
    ```
 
-The runner creates a fresh `output/runs/` directory for each execution. It generates
-data, runs and reruns the pipeline, runs both demos, and executes pytest.
+Each invocation creates `output/runs/run01/`, then `run02/`, and so on, containing a first execution and a replay. After success, open that run's `reports/reviewer_summary.md`. Codespaces usage and billing depend on the account's quota and settings.
 
 <details>
-<summary>Manual local setup</summary>
+<summary><strong>Manual local setup: Linux, macOS or WSL2</strong></summary>
 
-Use Linux, macOS, or WSL2, with Python 3.10–3.12 and Java 17. The first setup and
-Delta startup require network access for dependencies.
+Install Python 3.10–3.12 and Java 17, then run from the repository root:
 
 ```bash
 python3.11 -m venv .venv
@@ -75,7 +78,7 @@ python -m pip install -r requirements.txt
 bash run_all.sh
 ```
 
-See [troubleshooting](docs/TROUBLESHOOTING.md) for environment and retry guidance.
+Initial setup and Delta startup require network access. See [troubleshooting](docs/TROUBLESHOOTING.md).
 
 </details>
 
@@ -83,37 +86,40 @@ See [troubleshooting](docs/TROUBLESHOOTING.md) for environment and retry guidanc
 
 ```text
 .
-├── .devcontainer/devcontainer.json  # Codespaces environment
-├── config.yaml                      # Paths, rules, Spark and generator settings
-├── requirements.txt                 # Python dependencies
-├── run_all.sh                       # Isolated end-to-end workflow
+├── .devcontainer/                  # Codespaces environment
+├── config.yaml                     # Paths, validation and Spark settings
+├── requirements.txt                # Python dependencies
+├── run_all.sh                      # Generation, pipeline, demos and tests
 ├── src/
-│   ├── generate_data.py             # Synthetic records and expected counts
-│   ├── ingest.py                    # CSV ingestion and provenance
-│   ├── validate.py                  # Business checks and rejection reasons
-│   ├── transform.py                 # Bronze, Silver, Gold and SCD2 logic
-│   ├── partition_writer.py          # Delta table writes and MERGE rules
-│   ├── optimize.py                  # Isolated compaction demonstration
-│   ├── prune_demo.py                # Pruning and file-metric demonstration
-│   └── run_pipeline.py              # Orchestration, logging and reconciliation
-├── tests/test_pipeline.py           # Spark and Delta test cases
-├── sample_data/                     # Starter input and expected counts
-├── output/                          # Generated logs, reports and run artifacts
-├── prompts/                         # AI prompt history and build prompt
-└── docs/                            # Design, troubleshooting and diagrams
+│   ├── generate_data.py            # Reproducible input and injection labels
+│   ├── ingest.py                   # CSV schema and source metadata
+│   ├── validate.py                 # Quality checks and rejection reasons
+│   ├── transform.py                # Bronze, Silver, Gold and SCD2 logic
+│   ├── partition_writer.py         # Delta writes and MERGE policies
+│   ├── prune_demo.py / optimize.py # Pruning and compaction measurements
+│   ├── reviewer_demo.py            # Late-arrival and city-history examples
+│   ├── reviewer_summary.py         # Readable report from run artifacts
+│   └── run_pipeline.py             # Orchestration and reconciliation
+├── tests/                          # Automated Spark and Delta checks
+├── sample_data/                    # Starter input and expected counts
+├── output/evidence/                # Selected, reviewed run evidence
+├── prompts/                        # AI prompt history and build prompt
+└── docs/                           # Data dictionary, trade-offs and diagrams
 ```
 
 ## Data model
 
+**Grain:** one source record per ride under an immutable `ride_id` contract.
+
 | Column | Type | Rule |
 | --- | --- | --- |
-| `ride_id` | string | Required; unique per ride under the source contract. |
-| `rider_id` | string | Required. |
-| `driver_id` | string | Required. |
+| `ride_id` | string | Required; unique logical ride key. |
+| `rider_id` | string | Required; no rider-master lookup. |
+| `driver_id` | string | Required; no driver-master lookup. |
 | `city` | string | Required; one of the five configured cities. |
-| `fare` | numeric | Required, finite, and greater than zero; INR. |
-| `event_time` | ISO-8601 timestamp | Required, timezone-aware, and not later than the run cutoff. |
-| `status` | string | `completed`, `cancelled`, or `in_progress`. |
+| `fare` | numeric | Required, finite and greater than zero; INR. |
+| `event_time` | ISO-8601 timestamp | Required, timezone-aware and no later than the run cutoff. |
+| `status` | string | `completed`, `cancelled` or `in_progress`. |
 
 ```mermaid
 erDiagram
@@ -136,90 +142,106 @@ erDiagram
     }
 ```
 
+Gold facts join city versions using `[valid_from, valid_to)` intervals. See the [data dictionary](docs/data_dictionary.md) for nullability, derived fields and reference-check assumptions.
+
 ## Validation rules
 
 | Rule | `rejection_reason` |
 | --- | --- |
-| Malformed CSV record | `malformed_record` |
-| Missing ride, rider, or driver ID | `missing_ride_id`, `missing_rider_id`, `missing_driver_id` |
-| Missing event time | `missing_event_time` |
-| Invalid or future timestamp | `invalid_event_time`, `future_timestamp` |
+| Malformed record | `malformed_record` |
+| Missing ride, rider or driver ID | `missing_ride_id`, `missing_rider_id`, `missing_driver_id` |
+| Missing, invalid or future event time | `missing_event_time`, `invalid_event_time`, `future_timestamp` |
 | Missing or unsupported city | `invalid_city` |
-| Missing, non-finite, or non-positive fare | `invalid_fare` |
+| Missing, non-finite or non-positive fare | `invalid_fare` |
 | Missing or unsupported status | `invalid_status` |
 | Duplicate valid ride ID within a batch | `duplicate_ride_id` |
 
-The first failing rule is recorded. Unexpected headers fail the batch.
+The first failing reason is retained. Unexpected headers fail the batch. Injection labels are separate from input and are not final validation decisions.
 
 ## Partitioning strategy and trade-offs
 
-| Strategy | Pruning | File size | Best for |
+| Strategy | Pruning | File-size trade-off | Best for |
 | --- | --- | --- | --- |
-| Daily | Strong for daily filters | Can be small at low volume | Regular date-based analytics |
-| Monthly | Coarser for daily filters | Fewer, potentially larger files | Low-volume, broad-range scans |
-| Hourly | Fine-grained | Higher small-file risk | High-volume hourly queries |
+| **Daily** | Strong for day filters | Sparse days can produce small files | Date-based ride analytics |
+| Monthly | Coarser for a single day | Fewer, potentially larger files | Lower-volume, broad-range scans |
+| Hourly | Fine-grained | Higher small-file and metadata overhead | High-volume hourly queries |
 
-Daily UTC partitioning is selected for date-based queries and late-event routing.
-Compaction combines eligible files within a partition, not across dates.
+**Chosen:** daily UTC partitions balance date filtering and simplicity. Compaction combines eligible files within a partition, not across days.
 
 ![Illustrative partitioning strategy comparison](docs/images/partitioning-strategy.png)
 
-*The diagram is illustrative; its example file sizes and partition counts are not benchmark results.*
-See [partitioning trade-offs](docs/trade_off_note.md) for details.
+*The diagram is illustrative; its example sizes and partition counts are not measured results.*
+See the [trade-off note](docs/trade_off_note.md) for workload and sizing details.
 
 ## Idempotency, retry and backfill
 
-- Delta MERGE inserts unseen ride IDs; an exact replay does not add duplicates.
-- Conflicting payloads for an existing ID fail rather than overwrite history.
-- Retry with the same source and cutoff after inspecting the failure log.
-- Backfill new ride IDs using their event dates and covered city-history intervals.
-- Delta commits are per table; cross-table atomicity and concurrent writers are not supported.
+- Exact ride replays use Delta MERGE without adding duplicate IDs.
+- A changed payload for an existing ride ID fails instead of silently overwriting it.
+- Retry with the same input and cutoff after inspecting the failure log.
+- Backfill new ride IDs into their event-date partitions; city history must cover those dates.
+- Delta commits are atomic per table, not across the entire multi-table pipeline.
 
 ## Testing
 
-| Test | Scenario | Expected result |
-| --- | --- | --- |
-| Happy path | Valid ride through Gold | One fact is produced. |
-| Empty input | Empty batch | No rows or target changes. |
-| Malformed record | Extra CSV field | Record is quarantined. |
-| Duplicate key | Repeated `ride_id` | One valid row survives. |
-| Null handling | Missing event time | Row is rejected with its reason. |
-| Late arrival | Historical event timestamp | Historical partition is selected. |
-| Invalid reference | Unsupported city | Row is quarantined. |
-| Rerun | Replay identical input | Target count does not increase. |
+| Scenario | Expected result |
+| --- | --- |
+| Valid ride | Flows through to Gold. |
+| Empty input | No target records are added. |
+| Malformed record | Quarantined with a reason. |
+| Duplicate ID | One valid batch record is retained. |
+| Missing required field | Rejected with its reason. |
+| Late arrival | Routed to its historical event-date partition. |
+| Invalid city | Rejected by the configured reference check. |
+| Replay | Target counts and fingerprints remain consistent. |
 
-Additional tests cover future timestamps, schema changes, SCD2, retries, pruning,
-and compaction. Execute `pytest -q` to produce current results.
+Additional tests cover SCD2, injected failure and retry, schema changes, pruning and compaction. Run with `python -m pytest -q`.
 
 ## Results
 
-*Populated from output/ after running run_all.sh.* Copy measured values from the generated reports.
+**Reference execution: `run01` · 20 tests passed.** The recorded run preceded a later adjustment to pytest's temporary-directory location; run the current code to verify it independently.
 
-| Reconciliation | Count |
-| --- | ---: |
-| Source / quarantine | — / — |
-| Bronze / Silver / Gold batch | — / — / — |
+### Reconciliation and replay
 
-| Pruning scan | Files with rows | On-disk bytes of those files | Time |
-| --- | ---: | ---: | ---: |
-| Full scan | — | — | — |
-| One day | — | — | — |
-
-| Compaction | Active files | Average file size |
+| Metric | First execution | Replay |
 | --- | ---: | ---: |
-| Before | — | — |
-| After | — | — |
+| Source | 1,000 | 1,000 |
+| Quarantine | 105 | 105 |
+| Bronze / Silver / Gold batch | 895 / 895 / 895 | 895 / 895 / 895 |
+
+Counts and non-cryptographic table fingerprints matched on replay.
+
+### Pruning and compaction
+
+| Experiment | Full / before | Filtered / after |
+| --- | ---: | ---: |
+| Files emitting rows | 721 | 2 |
+| On-disk bytes of those files | 2,591,524 | 7,219 |
+| Scan time | 2.753 s | 0.878 s |
+| Isolated compaction: active files | 4 | 1 |
+| Isolated compaction: average file size | 1,506 bytes | 4,622 bytes |
+
+The 1 January 2024 scan reduced files emitting rows by **99.72%**; isolated compaction reduced its file count by **75%**. On-disk file sizes are not physical bytes transferred; files emitting no rows are excluded. Timings represent one run, and the demo does not compact Bronze or Silver.
+
+### Historical-data demonstrations
+
+| Scenario | Recorded outcome |
+| --- | --- |
+| Late event | Second batch landed in `year=2024/month=2/day=29`; partition rows increased **1 → 2**. |
+| SCD Type 2 | `West` closed at 2025-01-01; `New West` became current. |
+| Historical join | `DEMO_OLD → West`; `DEMO_NEW → New West`. |
+
+[Reviewer summary](output/evidence/run01/reports/reviewer_summary.md) · [Test results](output/evidence/run01/pytest-results.xml) · [Late-arrival evidence](output/evidence/run01/reports/late_arrival.json) · [City-history evidence](output/evidence/run01/reports/city_history.json)
 
 ## Known limitations and next steps
 
-- Complete end-to-end execution and generated test evidence are required before reporting results.
-- Observed file sizes are not physical I/O bytes; files emitting no rows are excluded.
-- Compaction runs on an isolated demo; low-volume daily partitions may remain small.
-- The source contract allows one event per ride; changed payloads and backdated city corrections are rejected.
-- City validity must cover event dates; concurrent writers and cross-table recovery require additional design.
-- Spark CSV parsing may not identify every malformed input pattern.
+- Daily partitions can still be small; the recorded main-table scan observed 721 files emitting rows.
+- The compaction demonstration is isolated; assess production-table compaction separately.
+- One immutable event per ride is assumed; changed ride payloads and backdated city corrections are rejected.
+- Rider and driver master-data foreign keys and concurrent-writer coordination are not implemented.
+- CSV parsing may not detect every malformed pattern; Spark scan metrics vary by plan and version.
+- Current code should be rerun to verify the environment and latest runner change.
 
 ## AI usage
 
-AI tools were used during development. The [prompt history](prompts/prompt_history.md) records available prompts.
-The [build prompt](prompts/project_build_prompt.md) and completeness notes are retained for review.
+AI tools assisted development; available prompts are recorded in the [prompt history](prompts/prompt_history.md).
+The [build prompt](prompts/project_build_prompt.md) and disclosure/completeness notes are retained for review.
