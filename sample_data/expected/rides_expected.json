@@ -1,0 +1,16 @@
+{
+  "seed": 42,
+  "year": 2024,
+  "source_count": 1000,
+  "expected_valid_count": 895,
+  "expected_rejected_count": 105,
+  "injected_defects": {
+    "missing_city": 25,
+    "missing_event_time": 25,
+    "duplicate_ride_id": 30,
+    "invalid_fare": 20,
+    "invalid_city": 5
+  },
+  "late_arriving_count": 10,
+  "notes": "Counts describe generator-injected defects, not pipeline verification. CSV row order simulates arrival order."
+}

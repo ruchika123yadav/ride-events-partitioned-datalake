@@ -1,0 +1,43 @@
+# All paths are relative to the project root.
+paths:
+  source: sample_data/small/rides.csv
+  expected: sample_data/expected
+  bronze: data/bronze/rides
+  silver: data/silver/rides
+  gold_facts: data/gold/ride_fact
+  gold_cities: data/gold/city_dim
+  quarantine: data/quarantine
+  run_logs: output/run_logs
+  reconciliation: output/reconciliation
+  compaction_benchmarks: data/benchmarks/compaction
+spark:
+  master: "local[*]"
+  app_name: partitioned_ride_lake
+  session_timezone: UTC
+  shuffle_partitions: 4
+  delta_snapshot_partitions: 4
+partitioning:
+  granularity: daily
+  columns: [year, month, day]
+  timestamp_column: event_time
+file_sizing:
+  target_bytes: 134217728 # Starting target, not a guarantee.
+generator:
+  seed: 42
+  size: 1000
+  year: 2024
+validation:
+  allowed_cities: [Mumbai, Delhi, Bangalore, Hyderabad, Chennai]
+  allowed_statuses: [completed, cancelled, in_progress]
+  # Fixed cutoff makes retries and sample results reproducible; update deliberately.
+  as_of_utc: "2026-11-06T00:00:00Z"
+
+city_dimension:
+  initial_valid_from: "2023-01-01T00:00:00Z"
+  changes_effective_at: "2025-01-01T00:00:00Z"
+  regions:
+    Mumbai: West
+    Delhi: North
+    Bangalore: South
+    Hyderabad: South
+    Chennai: South
