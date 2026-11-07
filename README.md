@@ -232,15 +232,7 @@ The 1 January 2024 scan reduced files emitting rows by **99.72%**; isolated comp
 
 [Reviewer summary](output/evidence/run01/reports/reviewer_summary.md) · [Test results](output/evidence/run01/pytest-results.xml) · [Late-arrival evidence](output/evidence/run01/reports/late_arrival.json) · [City-history evidence](output/evidence/run01/reports/city_history.json)
 
-## Known limitations and next steps
-
-- Daily partitions can still be small; the recorded main-table scan observed 721 files emitting rows.
-- The compaction demonstration is isolated; assess production-table compaction separately.
-- One immutable event per ride is assumed; changed ride payloads and backdated city corrections are rejected.
-- Rider and driver master-data foreign keys and concurrent-writer coordination are not implemented.
-- CSV parsing may not detect every malformed pattern; Spark scan metrics vary by plan and version.
-- Current code should be rerun to verify the environment and latest runner change.
-
+ 
 ## AI usage
 
 AI tools assisted development; available prompts are recorded in the [prompt history](prompts/prompt_history.md).
