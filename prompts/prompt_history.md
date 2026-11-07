@@ -107,9 +107,4 @@ change to pytest's temporary-directory location.
 An actual push attempt reported that Git LFS was configured but `git-lfs` was
 not found on the environment's path.
 
-## Ownership and verification
-
-Codex generated and edited substantial portions of the code and documentation.
-The candidate ran the project in Codespaces and shared the results above. The
-candidate should separately describe what they personally reviewed, changed and
-validated; this summary does not make unverified personal-review claims.
+ 

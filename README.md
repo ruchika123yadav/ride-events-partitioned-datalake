@@ -4,7 +4,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.10--3.12-blue) ![PySpark](https://img.shields.io/badge/PySpark-3.5.9-orange) ![Delta Lake](https://img.shields.io/badge/Delta%20Lake-3.3.3-blue) ![Testing](https://img.shields.io/badge/tests-pytest-green)
 
-[Architecture](#architecture) · [Features](#key-features) · [Quick start](#quick-start) · [Data model](#data-model) · [Results](#results) · [Limitations](#known-limitations-and-next-steps)
+[Architecture](#architecture) · [Features](#key-features) · [Quick start](#quick-start) · [Data model](#data-model) · [Results](#results)
 
 ## Problem statement
 
