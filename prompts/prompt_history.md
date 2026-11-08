@@ -8,8 +8,7 @@ paraphrases of requests made during this project**, not verbatim prompts or a
 complete export. The error messages included below were actually reported.
 
 The submission instructions request all prompts used across AI tools. This
-summary alone is not a complete prompt history; the candidate should supply the
-original project prompts or a complete record with any export limitations disclosed.
+summary alone is not a complete prompt history; 
 
 ## 1. Understand the challenge
 
